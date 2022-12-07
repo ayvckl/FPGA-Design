@@ -2,7 +2,6 @@
 /*
  * 
  * ---------------------
- * Autor: Beyza AYVACIKLI
  
  * Date: 1.05.2022
  *
