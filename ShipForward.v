@@ -1,8 +1,6 @@
 /*
  * 
  * ---------------------
- * Autor: Beyza AYVACIKLI
- 
  * Date: 16.04.2022
  *
  * Description
