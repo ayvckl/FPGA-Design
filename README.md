@@ -1,12 +1,8 @@
-# ELEC5566M-Mini-Project-ayvckl
-ELEC5566M-Mini-Project-ayvckl created by GitHub Classroom
-15/04/2022
 
-ASSIGNMENT 3: MINI PROJECT REPORT
+15/04/2022
 
 
 Basic Space Game (2D) Verilog Design on the DE1-SoC Development Board and LT24 LCD Module
-
 
       This report is on a design game’s Verilog HDL code and how these codes work on the DE1 SoC board and LT24 display module. This game design is based on a two-dimension spaceship-enemy basic game logic design. It includes, how the game and its purpose will be mentioned in this report. A summary of how the game is played is given and then the main task of the game, the state machine, is mentioned. Some errors encountered while writing the code are given with error codes. 
 Finally, an evaluation of the project is presented in the conclusion part. The codes of the mini project are shared in the appendix section of this report.
@@ -24,3 +20,4 @@ KEY3-> Left Button
 KEY2 ->Right Button
 KEY1 -> Fast/Forward Button 
 KEY0 -> Reset Button
+
