@@ -2,8 +2,6 @@
 	/*
  * 
  * ---------------------
- * Autor: Beyza AYVACIKLI
- 
  * Date: 14.04.2022
  *
  * Seven Segment written code. 
