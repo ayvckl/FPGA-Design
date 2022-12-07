@@ -1,0 +1,33 @@
+module SevenSegs_Write(
+
+input  [3:0] winner,
+input  [3:0] life,
+output [6:0] lifeSeg0,
+output [6:0] lifeSeg1,
+output [6:0] lifeSeg2,
+output [6:0] lifeSeg3,
+output [6:0] lifeSeg4,
+output [6:0] lifeSeg5
+
+);
+
+	 reg [6:0] letter_L = 7'b0111000;
+	 reg [6:0] letter_Non = 7'b0000000; 
+	 reg [6:0] tire = 7'b0001000; 
+
+	 wire hundreds_level,tens_level, ones_level, hundreds_life,tens_life, ones_life;
+	 	 
+	assign lifeSeg5=~letter_L;
+	assign lifeSeg4=~tire;
+	//	BCD BCD_life(1,hundreds_life,tens_life, ones_life);	
+	SevenSeg seg_life(life,lifeSeg2);
+	
+	assign lifeSeg3=~letter_Non;
+	assign lifeSeg1=~letter_Non;
+	assign lifeSeg0=~letter_Non;
+
+	
+	
+	
+	endmodule
+	

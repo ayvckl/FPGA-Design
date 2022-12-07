@@ -1,0 +1,28 @@
+module ShipForward(
+ 
+input clock,
+input reset,
+output reg forwardTrue
+);
+
+parameter oneSecond =26'b00000001111010000100100000; //50000000/100// 26'b10111110101111000010000000;
+reg [25:0] cnt;
+
+always@(posedge clock)begin
+
+if(reset)begin
+cnt<=0;
+end else begin
+if(cnt==oneSecond)begin
+forwardTrue<=1;
+cnt<=0;
+end else begin
+cnt<=cnt+1;
+forwardTrue<=0;
+end
+end
+
+end
+
+endmodule
+

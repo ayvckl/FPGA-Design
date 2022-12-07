@@ -1,0 +1,513 @@
+
+
+
+module SpaceGame ( 
+  // Clock 
+  input clock, 
+  // GlobalReset 
+  input globalReset, 
+  output resetApp,
+
+  input forwardButton,
+  input leftButton,  
+  input rightButton,
+  // LT24 Interface 
+  output LT24Wr_n, 
+  output LT24Rd_n, 
+  output LT24CS_n, 
+  output LT24RS, 
+  output LT24Reset_n, 
+  output [15:0] LT24Data, 
+  output LT24LCDOn, 
+  output [6:0] lifeSeg0, 
+  output [6:0] lifeSeg1, 
+  output [6:0] lifeSeg2, 
+  output [6:0] llifeSeg3, 
+  output [6:0] lifeSeg4, 
+  output [6:0] lifeSeg5 
+  );
+
+
+  localparam LCD_WIDTH = 240; 
+  localparam LCD_HEIGHT = 320;
+	
+  reg [ 7:0] xAddr; 
+  reg [ 8:0] yAddr; 
+  reg [15:0] pixelData; 
+  wire pixelReady; 
+  reg pixelWrite;
+  reg globalResetPressed; 
+
+  LT24Display #( 
+   .WIDTH (LCD_WIDTH ), 
+	.HEIGHT (LCD_HEIGHT ), 
+	.CLOCK_FREQ (50000000 ) 
+  ) Display ( 
+	.clock (clock ), 
+	.globalReset (globalResetPressed),  
+	.resetApp (resetApp ), 
+	.xAddr (xAddr ), .yAddr (yAddr ), 
+	.pixelData (pixelData ), 
+	.pixelWrite (pixelWrite ), 
+	.pixelReady (pixelReady ),
+	.pixelRawMode(1'b0 ), 
+	.cmdData (8'b0 ), 
+	.cmdWrite (1'b0 ), 
+	.cmdDone (1'b0 ), 
+	.cmdReady ( ), 
+	.LT24Wr_n (LT24Wr_n ), 
+	.LT24Rd_n (LT24Rd_n ), 
+	.LT24CS_n (LT24CS_n ), 
+	.LT24RS (LT24RS ), 
+	.LT24Reset_n (LT24Reset_n), 
+	.LT24Data (LT24Data ), 
+	.LT24LCDOn (LT24LCDOn ) 
+  );
+
+  wire [16:0] pixelCount; 
+  UpCounterNbit #( 
+    .WIDTH (17), 
+	 .MAX_VALUE(76799)
+  ) pixelCounter (
+	 .clock (clock ), 
+	 .reset (resetApp ), 
+	 .enable (pixelReady), 
+	 .backValue (1'b0),
+	 .countValue(pixelCount)
+  ); 
+	 
+  // // Y Counter // 
+  wire [8:0] yCount; 
+  // wire yCntEnable = pixelReady && (xCount == (LCD_WIDTH-1)); 
+  UpCounterNbit #( 
+	.WIDTH ( 9), 
+	.MAX_VALUE(LCD_HEIGHT-1)
+  ) yCounter ( 
+	.clock (clock ), 
+	.reset (resetApp ), 
+	.enable (pixelReady), 
+	.backValue (1'b0),
+	.countValue(yCount ) 
+  ); 
+  // // X Counter // 
+  wire [7:0] xCount;
+  wire xCntEnable = pixelReady && (yCount == (LCD_HEIGHT-1)); 
+  UpCounterNbit #( 
+	.WIDTH ( 8), 
+	.MAX_VALUE(LCD_WIDTH-1) 
+  )xCounter ( 
+	.clock (clock ),
+	.reset (resetApp ),
+	.enable (xCntEnable),
+	.backValue (1'b0),
+	.countValue(xCount )
+  ); 
+  // // Pixel Write // 
+  always @ (posedge clock or posedge resetApp) begin 
+    if (resetApp) begin 
+	   pixelWrite <= 1'b0; 
+	 end else begin 
+	   //In this example we always set write high, and use pixelReady to detect when 
+		//to update the data.
+		pixelWrite <= 1'b1; 
+	   //You could also control pixelWrite and pixelData in a State Machine. 
+	 end 
+  end 
+
+  reg leftB_Pressed, leftButton_Q, rightB_Pressed, rightButton_Q, 
+		 forwardB_Pressed, forwardButton_Q, globalReset_Q; 
+
+  always@(posedge clock) begin 
+    leftButton_Q<=leftButton; 
+    rightButton_Q<=rightButton;
+    forwardButton_Q<=forwardButton; 
+    globalReset_Q<=globalReset; 
+    if (globalReset && !globalReset_Q) begin 
+	   globalResetPressed <= 1; 
+    end else begin 
+	   globalResetPressed <= 0; 
+	 end if (forwardButton && !forwardButton_Q) begin
+	   forwardB_Pressed <=1;
+	 end else begin
+	   forwardB_Pressed <=0;
+    end if (leftButton && !leftButton_Q) begin 
+	   leftB_Pressed <= 1; 
+    end else begin 
+	   leftB_Pressed <= 0; 
+    end if (rightButton && !rightButton_Q) begin 
+	   rightB_Pressed = 1; 
+    end else begin 
+	   rightB_Pressed = 0; 
+    end 
+  end 
+	
+  reg [3:0] winner;
+  reg [3:0] life;
+  
+  SevenSegs_Write(winner,life,lifeSeg0,lifeSeg1,lifeSeg2,lifeSeg3,lifeSeg4,lifeSeg5);
+	
+		//https://www.kreatifbiri.com/uzay-ile-ilgili-okuyabileceginiz-5-bilim-kitabi/->citiation picture
+ // (* ram_init_file = "SpaceBackground.mif" *) 
+  reg [15:0] SpaceBackground [0:76799]; 
+  //(* ram_init_file = "SpaceGameStartSmall.mif" *) 
+  reg [15:0] SpaceGameStart [0:9999]; 
+ //(* ram_init_file = "spaceWinSmall.mif" *) 
+  reg [15:0] spaceWin [0:9999]; 
+ //(* ram_init_file = "GameOverSmall.mif" *) 
+  reg [15:0] GameOver [0:9999]; 
+  
+  
+  //(* ram_init_file = "ship.mif" *)
+  reg [15:0] ship [0:899]; 	
+ // (* ram_init_file = "fire.mif" *) 
+  reg [15:0] fire [0:99];  
+
+
+  reg [5:0] state; 
+  localparam START_STATE = 4'b0001; 
+  localparam DEFAULT_STATE = 4'b0010; 
+  localparam FIRE_RANDUPRIGHT = 4'b0011;  
+  localparam FIRE_RANDUPLEFT = 4'b0100; 
+  localparam FIRE_RANDDOWNRIGHT = 4'b0101;  
+  localparam FIRE_RANDDOWNLEFT = 4'b0110; 
+  localparam THEEND_STATE = 4'b1000; 
+	 
+  integer spaceShipx;  
+  integer spaceShipy;
+  integer firex; 
+  integer firey;
+  integer fire2x; 
+  integer fire2y;
+	
+  localparam fireRange= 5;
+  localparam ShipRange = 15;
+  localparam winBorder_Level=60;
+  
+  always @ (posedge clock or posedge resetApp) begin 
+    if (resetApp) begin 
+	   pixelData <= 16'b0; 
+	   xAddr <= 8'b0;      yAddr <= 9'b0; 
+	   firex <= 10;        firey <= 60; 
+	   fire2x <= 20;       fire2y <= 60; 
+	   winner<=2'b0;
+	   spaceShipy<=310;    spaceShipx<=120;
+	   life <= 4'b0011;  
+		
+    end else if (forwardB_Pressed==1) begin
+	   spaceShipy<=spaceShipy-10;
+	 end else if (leftB_Pressed==1) begin  
+	   spaceShipx <= spaceShipx-10; 
+	 end else if (rightB_Pressed==1) begin  
+		spaceShipx <= spaceShipx+10;
+	 end else if (spaceShipx<10) begin 
+	   spaceShipx <= 15; 
+	 end else if (spaceShipx>230) begin 
+	   spaceShipx <= 225; 
+	 end else if (pixelReady) begin 
+		
+		 //Background colour on LT24 screen 
+	   xAddr <= xCount; 
+		yAddr <= yCount; 
+		pixelData <= SpaceBackground[pixelCount]; 
+		
+		if ( (yCount > winBorder_Level) && (yCount < winBorder_Level+10)) begin 
+		  xAddr <= xCount; 
+		  yAddr <= yCount; 
+		  pixelData <= 16'h07FF; 
+		end 
+		
+		if ((xCount >= (spaceShipx-ShipRange)) 
+		 && (xCount <= (spaceShipx+ShipRange)) 
+		 && (yCount >= (spaceShipy-ShipRange)) 
+		 && (yCount <= (spaceShipy+ShipRange))) 
+		 begin 
+		  xAddr <= xCount; 
+		  yAddr <= yCount; 
+		  pixelData <= ship[(((yCount-spaceShipy-ShipRange-4)*ShipRange*2)
+									+spaceShipx+ShipRange-xCount-4)]; 
+		end 
+		
+		if ((xCount > (firex-fireRange)) 
+		 && (xCount < (firex+fireRange)) 
+		 && (yCount < (firey+fireRange)) 
+		 && (yCount > (firey-fireRange))) 
+		 begin 
+		  xAddr <= xCount; 
+		  yAddr <= yCount; 
+		  pixelData <= fire[(((yCount-firey-fireRange-4)*fireRange*2)
+									+firex+fireRange-xCount-4)];
+		end 
+			
+		if ((xCount > (fire2x-fireRange)) 
+		 && (xCount < (fire2x+fireRange)) 
+		 && (yCount < (fire2y+fireRange)) 
+		 && (yCount > (fire2y-fireRange))) 
+		 begin 
+		  xAddr <= xCount; 
+		  yAddr <= yCount; 
+		  pixelData <= fire[(((yCount-firey-fireRange-4)*fireRange*2)
+									+firex+fireRange-xCount-4)];
+      end
+		  
+		  
+		case (state) 
+		  START_STATE: begin 
+		  		if ( (yCount > ((yCount-100)/2))
+				 && (yCount < (yCount-100/2)+100)
+				 && (xCount > ((xCount-100)/2))
+				 && (xCount < (xCount-100/2)+100)) begin 
+				  xAddr <= xCount; 
+				  yAddr <= yCount; 
+				  pixelData <= SpaceGameStart[pixelCount];
+				end else begin
+				  xAddr <= xCount; 
+				  yAddr <= yCount; 
+				  pixelData <= 16'b0000000000000000; // Green
+				end
+			 
+		  end 
+		  DEFAULT_STATE: begin 
+          if ((xCount == (LCD_WIDTH-1)) && (yCount == (LCD_HEIGHT-1))) begin 
+			   firey <= firey + 1;      firex <= firex + 2; 
+				fire2y <= fire2y + 2;    fire2x <= fire2x + 3; 
+			 end 
+			 if (((firex-fireRange) >= (spaceShipx-ShipRange)) 
+			  && ((firex+fireRange) <= (spaceShipx+ShipRange)) 
+			  && ((firey-fireRange) >= (spaceShipy-ShipRange)) 
+			  && ((firey+fireRange) <= (spaceShipy+ShipRange))) 
+			  begin 
+			    if ( life != 0) begin					
+				   life <= life - 4'b0001;
+					spaceShipy<=310;  spaceShipx<=120; 
+				 end
+          end else if (((fire2x-fireRange) >= (spaceShipx-ShipRange)) 
+				&& ((fire2x+fireRange) <= (spaceShipx+ShipRange))
+				&& ((fire2y-fireRange) >= (spaceShipy-ShipRange)) 
+				&& ((fire2y+fireRange) <= (spaceShipy+ShipRange))) 
+				begin 
+				  if ( life != 0) begin					
+				    life <= life - 4'b0001;
+					 spaceShipy<=310;  spaceShipx<=120; 
+				  end 
+			  end
+			  if (spaceShipy+ShipRange < winBorder_Level) begin 
+			    winner <=1;
+			  end
+			end 
+			FIRE_RANDUPRIGHT: begin 
+			  if ((xCount == (LCD_WIDTH-1)) && (yCount == (LCD_HEIGHT-1))) begin 
+				 firey <= firey-1;   firex <= firex + 2; 
+				 fire2y <= fire2y-2; fire2x <= fire2x + 3; 
+			  end 
+			  if (((firex-fireRange) >= (spaceShipx-ShipRange)) 
+				&& ((firex+fireRange) <= (spaceShipx+ShipRange)) 
+				&& ((firey-fireRange) >= (spaceShipy-ShipRange)) 
+			   && ((firey+fireRange) <= (spaceShipy+ShipRange)))  
+				begin 
+				  if ( life != 0) begin					
+					 life <= life - 4'b0001;
+					 spaceShipy<=310; spaceShipx<=120; 
+				  end
+			  end else if (((fire2x-fireRange) >= (spaceShipx-ShipRange)) 
+				 && ((fire2x+fireRange) <= (spaceShipx+ShipRange)) 
+				 && ((fire2y-fireRange) >= (spaceShipy-ShipRange)) 
+				 && ((fire2y+fireRange) <= (spaceShipy+ShipRange)))  
+				 begin
+				   if ( life != 0) begin					
+					  life <= life - 4'b0001;
+					  spaceShipy<=310; spaceShipx<=120; 
+				   end 
+			  end										
+			  if (spaceShipy+ShipRange < winBorder_Level) begin
+				 winner <=1;
+			  end
+			end 
+			FIRE_RANDUPLEFT: begin 
+				if ((xCount == (LCD_WIDTH-1)) && (yCount == (LCD_HEIGHT-1))) begin 
+				  firey <= firey-1;   firex <= firex - 2;
+				  fire2y <= fire2y-2; fire2x <= fire2x - 3; 
+				end 
+				if (((firex-fireRange) >= (spaceShipx-ShipRange)) 
+				  && ((firex+fireRange) <= (spaceShipx+ShipRange)) 
+				  && ((firey-fireRange) >= (spaceShipy-ShipRange)) 
+				  && ((firey+fireRange) <= (spaceShipy+ShipRange)))  
+				  begin
+				    if ( life != 0) begin					
+					   life <= life - 4'b0001;
+					   spaceShipy<=310;  spaceShipx<=120; 
+				    end
+				end else if (((fire2x-fireRange) >= (spaceShipx-ShipRange)) 
+					&& ((fire2x+fireRange) <= (spaceShipx+ShipRange)) 
+					&& ((fire2y-fireRange) >= (spaceShipy-ShipRange)) 
+					&& ((fire2y+fireRange) <= (spaceShipy+ShipRange)))  
+					begin
+				     if ( life != 0) begin					
+					    life <= life - 4'b0001;
+					    spaceShipy<=310; spaceShipx<=120; 
+				     end 
+				end									
+				if (spaceShipy+ShipRange < winBorder_Level) begin
+				  winner <=1;
+				end
+			 end 
+			 FIRE_RANDDOWNRIGHT: begin  
+				if ((xCount == (LCD_WIDTH-1)) && (yCount == (LCD_HEIGHT-1))) begin 
+				  firey <= firey + 1;    firex <= firex + 2; 
+				  fire2y <= fire2y + 2;  fire2x <= fire2x + 3; 				  
+				end 
+				if (((firex-fireRange) >= (spaceShipx-ShipRange)) 
+				  && ((firex+fireRange) <= (spaceShipx+ShipRange)) 
+				  && ((firey-fireRange) >= (spaceShipy-ShipRange)) 
+				  && ((firey+fireRange) <= (spaceShipy+ShipRange))) begin 
+				    if ( life != 0) begin					
+					   life <= life - 4'b0001;
+					   spaceShipy<=310;  spaceShipx<=120; 
+				    end
+				end else if (((fire2x-fireRange) >= (spaceShipx-ShipRange)) 
+				  && ((fire2x+fireRange) <= (spaceShipx+ShipRange)) 
+				  && ((fire2y-fireRange) >= (spaceShipy-ShipRange)) 
+				  && ((fire2y+fireRange) <= (spaceShipy+ShipRange)))  
+				  begin
+				    if ( life != 0) begin					
+					   life <= life - 4'b0001;
+					   spaceShipy<=310; spaceShipx<=120; 
+				    end
+			   end									
+				if (spaceShipy+ShipRange < winBorder_Level) begin
+				  winner <=1;
+				end
+			 end 
+			 FIRE_RANDDOWNLEFT: begin  
+				if ((xCount == (LCD_WIDTH-1)) && (yCount == (LCD_HEIGHT-1))) begin  
+				  firey <= firey + 1;    firex <= firex - 2;
+				  fire2y <= fire2y + 2;  fire2x <= fire2x - 3; 				  
+				end 
+				if (((firex-fireRange) >= (spaceShipx-ShipRange)) 
+				  && ((firex+fireRange) <= (spaceShipx+ShipRange))
+				  && ((firey-fireRange) >= (spaceShipy-ShipRange)) 
+				  && ((firey+fireRange) <= (spaceShipy+ShipRange))) 
+				  begin 
+				    if ( life != 0) begin					
+					   life <= life - 4'b0001;
+					   spaceShipy<=310;  spaceShipx<=120; 
+				    end
+				end else if (((fire2x-fireRange) >= (spaceShipx-ShipRange)) 
+				  && ((fire2x+fireRange) <= (spaceShipx+ShipRange)) 
+				  && ((fire2y-fireRange) >= (spaceShipy-ShipRange)) 
+				  && ((fire2y+fireRange) <= (spaceShipy+ShipRange)))  
+				  begin
+				    if ( life != 0) begin					
+					   life <= life - 4'b0001;
+					   spaceShipy<=310;  spaceShipx<=120; 
+				    end
+				end		
+				if (spaceShipy+ShipRange < winBorder_Level) begin
+				  winner <=1;
+				end
+			 end 
+			 THEEND_STATE: begin 
+				if ( life == 0) begin 
+					if ( (yCount > ((yCount-100)/2))
+					 && (yCount < (yCount-100/2)+100)
+					 && (xCount > ((xCount-100)/2))
+					 && (xCount < (xCount-100/2)+100)) begin 
+					  xAddr <= xCount; 
+					  yAddr <= yCount; 
+					  pixelData <= GameOver[pixelCount];
+					end else begin
+					  xAddr <= xCount; 
+					  yAddr <= yCount; 
+					  pixelData <= 16'b1111100000000000; // Green
+					end
+				end  
+				if ( winner == 1) begin 
+					if ( (yCount > ((yCount-100)/2))
+					 && (yCount < (yCount-100/2)+100)
+					 && (xCount > ((xCount-100)/2))
+					 && (xCount < (xCount-100/2)+100)) begin 
+					  xAddr <= xCount; 
+					  yAddr <= yCount; 
+					  pixelData <= GameOver[pixelCount];
+					end else begin
+					  xAddr <= xCount; 
+					  yAddr <= yCount; 
+					  pixelData <= 16'b0000000000000000; // Green
+					end
+				end
+			 end 
+		 endcase 
+	end 
+  end 
+	
+  always @(posedge clock or posedge resetApp) begin 
+    if (resetApp) begin 
+  	   state <= START_STATE; 
+    end else begin 
+	   case (state) 
+	     START_STATE: begin 
+		    if (leftB_Pressed || rightB_Pressed ||forwardB_Pressed) begin 
+		      state <= DEFAULT_STATE; 
+		    end 
+	     end 
+	     DEFAULT_STATE: begin  
+		    if ((life == 0)||( winner == 1)) begin 
+		      state <= THEEND_STATE; 
+		    end else begin
+		    if ((firey >= 305 )||(fire2y >= 305 ))begin 
+			   state <= FIRE_RANDUPRIGHT; end  
+		    if ( (firex >= 229)||(fire2x >= 229) ) begin 
+		      state <= FIRE_RANDDOWNLEFT; end 
+		    end
+	     end 
+	     FIRE_RANDUPRIGHT: begin 
+		    if ((life == 0)||( winner == 1))begin 
+		      state <= THEEND_STATE; 
+		    end else begin
+		    if ((firey <= winBorder_Level)||(fire2y <= winBorder_Level ))begin 
+			   state <= FIRE_RANDDOWNRIGHT; end  
+		    if ((firex >= 238)||(fire2x >= 238 )) begin 
+			   state <= FIRE_RANDUPLEFT; end 
+		    end 
+	     end 
+	     FIRE_RANDUPLEFT: begin 
+		    if ((life == 0)||( winner == 1)) begin 
+		       state <= THEEND_STATE; 
+		    end else begin
+		    if ((firey <= winBorder_Level)||((fire2y <= winBorder_Level)))begin
+			   state <= FIRE_RANDDOWNLEFT; end  
+		    if ((firex <= 1)||(fire2x <= 1)) begin 
+			   state <= FIRE_RANDUPRIGHT; end 
+		    end 
+	     end 
+	     FIRE_RANDDOWNRIGHT: begin  
+		    if ((life == 0)||( winner == 1)) begin 
+		      state <= THEEND_STATE; 
+		    end else begin		  
+		    if ((firey >= 318)||(fire2y >= 318)) begin  
+			   state <= FIRE_RANDUPRIGHT;end 
+		    if ( firex >= 238 ) begin  
+			   state <= FIRE_RANDDOWNLEFT; end
+		    end 
+	     end 
+	     FIRE_RANDDOWNLEFT: begin 
+		    if ((life == 0)||( winner == 1)) begin 
+		      state <= THEEND_STATE; 
+		    end else begin		  
+		    if ((firey >= 318)||(fire2y >= 318))begin 
+			   state <= FIRE_RANDUPLEFT; end  
+		    if ((firex <= 1)||(fire2x <= 1)) begin 
+			   state <= FIRE_RANDDOWNRIGHT; end 
+		    end 
+	     end 
+	     THEEND_STATE: begin 
+		    if (resetApp) begin 
+		      state <= START_STATE; 	
+		    end
+	     end
+	   endcase 
+    end 
+  end 
+  
+endmodule 
+
+
